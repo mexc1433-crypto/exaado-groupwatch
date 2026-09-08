@@ -187,10 +187,22 @@ async def read_chat(req):
         limit = min(int(req.query.get("limit", "20")), 100)
     except Exception:
         limit = 20
+    entity = None
     try:
         entity = await client.get_entity(chat if chat not in ("me", "self") else "me")
-    except Exception as e:
-        return web.json_response({"ok": False, "error": "chat not found: " + str(e)[:150]}, status=404)
+    except Exception:
+        pass
+    if entity is None:
+        try:
+            want = int(chat)
+        except Exception:
+            want = None
+        async for d in client.iter_dialogs(limit=200):
+            if d.id == want or (getattr(d.entity, "username", None) or "").lower() == chat.lstrip("@").lower() or d.name == chat:
+                entity = d.entity
+                break
+    if entity is None:
+        return web.json_response({"ok": False, "error": "chat not found"}, status=404)
     out = []
     try:
         async for m in client.iter_messages(entity, limit=limit):
