@@ -162,6 +162,21 @@ async def login_password(req):
     asyncio.create_task(start_listener())
     return web.json_response({"ok": True, "logged_in": True})
 
+async def send_dm(req):
+    k = req.query.get("k") or req.headers.get("x-secret")
+    if not (check_key(k) or (WEBHOOK_SECRET and k == WEBHOOK_SECRET)):
+        return web.json_response({"ok": False, "error": "bad key"}, status=403)
+    to = req.query.get("to", "").strip()
+    text = req.query.get("text", "").strip()
+    if not to or not text:
+        return web.json_response({"ok": False, "error": "to & text required"}, status=400)
+    try:
+        entity = await client.get_entity(to)
+        await client.send_message(entity, text)
+        return web.json_response({"ok": True, "sent": True, "to": to})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)[:200]})
+
 async def status(req):
     auth = False
     try: auth = await client.is_user_authorized()
@@ -234,6 +249,8 @@ async def main():
     app.router.add_get("/login/verify", login_verify)
     app.router.add_get("/login/password", login_password)
     app.router.add_get("/status", status)
+    app.router.add_post("/send", send_dm)
+    app.router.add_get("/send", send_dm)
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.environ.get("PORT", "8080"))
