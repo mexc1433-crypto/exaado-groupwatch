@@ -205,7 +205,11 @@ async def read_chat(req):
         return web.json_response({"ok": False, "error": "chat not found"}, status=404)
     out = []
     try:
-        async for m in client.iter_messages(entity, limit=limit):
+        try:
+            offset_id = int(req.query.get("offset_id", "0"))
+        except Exception:
+            offset_id = 0
+        async for m in client.iter_messages(entity, limit=limit, offset_id=offset_id or 0):
             kind = "text"
             if m.voice or m.audio:
                 kind = "voice"
