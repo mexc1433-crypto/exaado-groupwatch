@@ -177,6 +177,68 @@ async def send_dm(req):
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)[:200]})
 
+
+async def read_chat(req):
+    k = req.query.get("k") or req.headers.get("x-secret")
+    if not (check_key(k) or (WEBHOOK_SECRET and k == WEBHOOK_SECRET)):
+        return web.json_response({"ok": False, "error": "bad key"}, status=403)
+    chat = req.query.get("chat", "me").strip() or "me"
+    try:
+        limit = min(int(req.query.get("limit", "20")), 100)
+    except Exception:
+        limit = 20
+    try:
+        entity = await client.get_entity(chat if chat not in ("me", "self") else "me")
+    except Exception as e:
+        return web.json_response({"ok": False, "error": "chat not found: " + str(e)[:150]}, status=404)
+    out = []
+    try:
+        async for m in client.iter_messages(entity, limit=limit):
+            kind = "text"
+            if m.voice or m.audio:
+                kind = "voice"
+            elif m.photo:
+                kind = "photo"
+            elif m.video:
+                kind = "video"
+            elif m.document:
+                kind = "document"
+            try:
+                snd = await m.get_sender()
+                sname = " ".join(filter(None, [getattr(snd, "first_name", None), getattr(snd, "last_name", None)])).strip()
+            except Exception:
+                sname = ""
+            dt = m.date.strftime("%m-%d %H:%M") if m.date else ""
+            out.append({
+                "id": m.id, "kind": kind, "sender": sname, "date": dt,
+                "text": (m.message or "")[:1500],
+                "file_id": m.file.id if (m.photo or m.video or m.document or m.voice) and m.file else None,
+            })
+        return web.json_response({"ok": True, "chat": chat, "messages": out})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)[:200]}, status=500)
+
+async def list_dialogs(req):
+    k = req.query.get("k") or req.headers.get("x-secret")
+    if not (check_key(k) or (WEBHOOK_SECRET and k == WEBHOOK_SECRET)):
+        return web.json_response({"ok": False, "error": "bad key"}, status=403)
+    try:
+        limit = min(int(req.query.get("limit", "40")), 100)
+    except Exception:
+        limit = 40
+    out = []
+    try:
+        async for d in client.iter_dialogs(limit=limit):
+            out.append({
+                "id": d.id, "name": d.name,
+                "username": getattr(d.entity, "username", None) if hasattr(d.entity, "username") else None,
+                "last": (d.message.message or "")[:80] if d.message else "",
+                "when": d.message.date.strftime("%m-%d %H:%M") if d.message and d.message.date else "",
+            })
+        return web.json_response({"ok": True, "dialogs": out})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)[:200]}, status=500)
+
 async def status(req):
     auth = False
     try: auth = await client.is_user_authorized()
@@ -251,6 +313,8 @@ async def main():
     app.router.add_get("/status", status)
     app.router.add_post("/send", send_dm)
     app.router.add_get("/send", send_dm)
+    app.router.add_get("/read", read_chat)
+    app.router.add_get("/dialogs", list_dialogs)
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.environ.get("PORT", "8080"))
