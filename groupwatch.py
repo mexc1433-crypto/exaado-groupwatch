@@ -251,6 +251,46 @@ async def list_dialogs(req):
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)[:200]}, status=500)
 
+
+async def media(req):
+    import io
+    k = req.query.get("k") or req.headers.get("x-secret")
+    if not (check_key(k) or (WEBHOOK_SECRET and k == WEBHOOK_SECRET)):
+        return web.json_response({"ok": False, "error": "bad key"}, status=403)
+    chat = req.query.get("chat", "me").strip() or "me"
+    try:
+        msg_id = int(req.query.get("msg_id", "0"))
+    except Exception:
+        msg_id = 0
+    entity = None
+    try:
+        entity = await client.get_entity(chat if chat not in ("me", "self") else "me")
+    except Exception:
+        pass
+    if entity is None:
+        try:
+            want = int(chat)
+        except Exception:
+            want = None
+        async for d in client.iter_dialogs(limit=200):
+            if d.id == want or (getattr(d.entity, "username", None) or "").lower() == chat.lstrip("@").lower() or d.name == chat:
+                entity = d.entity
+                break
+    if entity is None:
+        return web.json_response({"ok": False, "error": "chat not found"}, status=404)
+    try:
+        msg = await client.get_messages(entity, ids=msg_id)
+        if not msg or not (msg.photo or msg.video or msg.document or msg.voice):
+            return web.json_response({"ok": False, "error": "message has no media"}, status=404)
+        data = await client.download_media(msg, file=io.BytesIO())
+        data.seek(0)
+        ctype = "image/jpeg"
+        if msg.document and getattr(msg.document, "mime_type", None):
+            ctype = msg.document.mime_type or ctype
+        return web.Response(body=data.read(), content_type=ctype, headers={"Cache-Control": "no-store"})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)[:200]}, status=500)
+
 async def status(req):
     auth = False
     try: auth = await client.is_user_authorized()
@@ -327,6 +367,7 @@ async def main():
     app.router.add_get("/send", send_dm)
     app.router.add_get("/read", read_chat)
     app.router.add_get("/dialogs", list_dialogs)
+    app.router.add_get("/media", media)
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.environ.get("PORT", "8080"))
