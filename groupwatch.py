@@ -324,7 +324,11 @@ async def debug_msg(req):
             return web.json_response({"ok": False, "error": "no message"}, status=404)
         raw = msg.to_dict()
         raw.pop("peer", None); raw.pop("_client", None)
-        return web.json_response({"ok": True, "raw": str(raw)[:3000]})
+        sraw = str(raw)
+        i = sraw.find("'rich_message'")
+        if i >= 0:
+            sraw = "..." + sraw[i:]
+        return web.json_response({"ok": True, "raw": sraw[:9000]})
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)[:200]}, status=500)
 
