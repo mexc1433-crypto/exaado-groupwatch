@@ -211,18 +211,25 @@ async def read_chat(req):
                 kind = "voice"
             elif m.photo:
                 kind = "photo"
+            elif m.video_note:
+                kind = "video_note"
             elif m.video:
                 kind = "video"
+            elif m.sticker:
+                kind = "sticker"
             elif m.document:
                 kind = "document"
+            if m.action:
+                kind = "action:" + type(m.action).__name__
             try:
                 snd = await m.get_sender()
                 sname = " ".join(filter(None, [getattr(snd, "first_name", None), getattr(snd, "last_name", None)])).strip()
             except Exception:
                 sname = ""
             dt = m.date.strftime("%m-%d %H:%M") if m.date else ""
+            grp = getattr(m, "grouped_id", None)
             out.append({
-                "id": m.id, "kind": kind, "sender": sname, "date": dt,
+                "id": m.id, "kind": kind, "sender": sname, "date": dt, "grouped": grp,
                 "text": (m.message or "")[:1500],
                 "file_id": None,
             })
