@@ -68,6 +68,13 @@ def dr_m(name, username):
     return any(h in n or h in u for h in DR_M_HINTS)
 
 async def handle_message(event):
+    try:
+        await _handle(event)
+    except Exception as e:
+        print("handler error:", e)
+        await report_error(e)
+
+async def _handle(event):
     sender = await event.get_sender()
     name = " ".join(filter(None, [getattr(sender, "first_name", None), getattr(sender, "last_name", None)])).strip()
     username = getattr(sender, "username", None) or ""
@@ -186,11 +193,37 @@ async function pw(){const r=await fetch(`/login/password?k=${K}&p=${encodeURICom
 msg2.textContent=r.ok&&r.logged_in?'✅ تم الدخول! المستمع اشتغل':'❌ '+(r.error||'حاول تاني');}
 </script></body></html>"""
 
+async def report_error(err):
+    if not NTFY_TOPIC:
+        return
+    try:
+        import traceback
+        tb = traceback.format_exc()[-1200:] or str(err)
+        async with aiohttp.ClientSession() as s:
+            await s.post(f"https://ntfy.sh/{NTFY_TOPIC}", data=f"GW_ERROR: {tb}",
+                         headers={"Title": "GW_ERROR"}, timeout=aiohttp.ClientTimeout(total=15))
+    except Exception:
+        pass
+
+async def telethon_loop():
+    import traceback
+    while True:
+        try:
+            if not client.is_connected():
+                await client.connect()
+            if await client.is_user_authorized():
+                state["logged"] = True
+                await start_listener()
+                return
+            print("waiting for telegram login (unauthorized)...")
+            return
+        except Exception as e:
+            print("telethon_loop error:", e)
+            traceback.print_exc()
+            await report_error(e)
+            await asyncio.sleep(60)
+
 async def main():
-    await client.connect()
-    if await client.is_user_authorized():
-        state["logged"] = True
-        await start_listener()
     app = web.Application()
     app.router.add_get("/", index)
     app.router.add_get("/login/start", login_start)
@@ -202,6 +235,7 @@ async def main():
     port = int(os.environ.get("PORT", "8080"))
     await web.TCPSite(runner, "0.0.0.0", port).start()
     print(f"http server on {port}")
+    asyncio.create_task(telethon_loop())
     while True:
         await asyncio.sleep(3600)
 
