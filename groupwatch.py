@@ -147,6 +147,8 @@ async def login_verify(req):
         return web.json_response({"ok": True, "need_password": True})
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)[:200]})
+    state["logged"] = True
+    asyncio.create_task(start_listener())
     return web.json_response({"ok": True, "logged_in": True})
 
 async def login_password(req):
@@ -156,6 +158,8 @@ async def login_password(req):
         await client.sign_in(password=req.query.get("p", ""))
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)[:200]})
+    state["logged"] = True
+    asyncio.create_task(start_listener())
     return web.json_response({"ok": True, "logged_in": True})
 
 async def status(req):
