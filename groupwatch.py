@@ -298,6 +298,36 @@ async def media(req):
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)[:200]}, status=500)
 
+
+async def debug_msg(req):
+    k = req.query.get("k") or req.headers.get("x-secret")
+    if not (check_key(k) or (WEBHOOK_SECRET and k == WEBHOOK_SECRET)):
+        return web.json_response({"ok": False, "error": "bad key"}, status=403)
+    try:
+        msg_id = int(req.query.get("msg_id", "0"))
+    except Exception:
+        msg_id = 0
+    chat = req.query.get("chat", "8990872009")
+    try:
+        entity = await client.get_entity(chat)
+    except Exception:
+        entity = None
+        async for d in client.iter_dialogs(limit=200):
+            if str(d.id) == chat:
+                entity = d.entity
+                break
+    if entity is None:
+        return web.json_response({"ok": False, "error": "chat not found"}, status=404)
+    try:
+        msg = await client.get_messages(entity, ids=msg_id)
+        if not msg:
+            return web.json_response({"ok": False, "error": "no message"}, status=404)
+        raw = msg.to_dict()
+        raw.pop("peer", None); raw.pop("_client", None)
+        return web.json_response({"ok": True, "raw": str(raw)[:3000]})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)[:200]}, status=500)
+
 async def status(req):
     auth = False
     try: auth = await client.is_user_authorized()
@@ -375,6 +405,7 @@ async def main():
     app.router.add_get("/read", read_chat)
     app.router.add_get("/dialogs", list_dialogs)
     app.router.add_get("/media", media)
+    app.router.add_get("/debug", debug_msg)
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.environ.get("PORT", "8080"))
