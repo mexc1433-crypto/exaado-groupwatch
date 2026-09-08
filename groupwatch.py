@@ -212,7 +212,7 @@ async def read_chat(req):
             out.append({
                 "id": m.id, "kind": kind, "sender": sname, "date": dt,
                 "text": (m.message or "")[:1500],
-                "file_id": m.file.id if (m.photo or m.video or m.document or m.voice) and m.file else None,
+                "file_id": None,
             })
         return web.json_response({"ok": True, "chat": chat, "messages": out})
     except Exception as e:
