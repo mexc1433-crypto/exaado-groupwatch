@@ -1,0 +1,53 @@
+name: GW Login
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'request or finish'
+        required: true
+      phone:
+        description: 'phone for request phase'
+        required: false
+      runid:
+        description: 'request run id for finish phase'
+        required: false
+jobs:
+  login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TG_API_ID: ${{ secrets.TG_API_ID }}
+      TG_API_HASH: ${{ secrets.TG_API_HASH }}
+      TG_NTFY: ${{ secrets.TG_NTFY }}
+      TG_NTFY_CMD: ${{ secrets.TG_NTFY_CMD }}
+      TG_PASS: ${{ secrets.TG_PASS }}
+      TG_CODE: ${{ secrets.TG_CODE }}
+      TG_PASSWORD: ${{ secrets.TG_PASSWORD }}
+      TG_PHONE: ${{ inputs.phone }}
+      GW_PENDING_FILE: /tmp/pending_session
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -q telethon pynacl
+      - name: Request code
+        if: inputs.phase == 'request'
+        run: python gw/gw.py request "${{ inputs.phone }}"
+      - name: Save pending session artifact
+        if: inputs.phase == 'request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gw-pending
+          path: /tmp/pending_session
+          retention-days: 1
+      - name: Download pending session
+        if: inputs.phase == 'finish'
+        uses: actions/download-artifact@v4
+        with:
+          name: gw-pending
+          run-id: ${{ inputs.runid }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/
+      - name: Finish login
+        if: inputs.phase == 'finish'
+        run: python gw/gw.py finish
