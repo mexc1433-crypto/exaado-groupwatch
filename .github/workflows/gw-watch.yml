@@ -1,0 +1,53 @@
+name: GW Watch
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'watch or backfill'
+        required: false
+        default: 'watch'
+      limit:
+        description: 'limit for backfill'
+        required: false
+        default: '35'
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: gw-watch
+      cancel-in-progress: false
+    env:
+      TG_API_ID: ${{ secrets.TG_API_ID }}
+      TG_API_HASH: ${{ secrets.TG_API_HASH }}
+      TG_GROUP_ID: ${{ secrets.TG_GROUP_ID }}
+      TG_NTFY: ${{ secrets.TG_NTFY }}
+      TG_NTFY_CMD: ${{ secrets.TG_NTFY_CMD }}
+      TG_PASS: ${{ secrets.TG_PASS }}
+      TG_SESSION: ${{ secrets.TG_SESSION }}
+      GW_RUN_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -q telethon pynacl
+      - name: Watch
+        if: inputs.phase != 'backfill'
+        run: python gw/gw.py watch
+      - name: Backfill
+        if: inputs.phase == 'backfill'
+        run: python gw/gw.py backfill ${{ inputs.limit }}
+      - name: Commit last_id
+        if: inputs.phase != 'backfill'
+        run: |
+          if git status --porcelain gw_state/ | grep -q .; then
+            git config user.name "gw-bot"
+            git config user.email "actions@users.noreply.github.com"
+            git add gw_state/
+            git commit -m "gw: update last_id" || true
+            git push || true
+          fi
